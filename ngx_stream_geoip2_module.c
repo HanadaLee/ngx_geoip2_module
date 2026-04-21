@@ -53,8 +53,6 @@ static char *ngx_stream_geoip2(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
 static char *ngx_stream_geoip2_parse_config(ngx_conf_t *cf, ngx_command_t *dummy,
     void *conf);
-static char *ngx_stream_geoip2(ngx_conf_t *cf, ngx_command_t *cmd,
-    void *conf);
 static char *ngx_stream_geoip2_add_variable(ngx_conf_t *cf, ngx_command_t *dummy,
     void *conf);
 static char *ngx_stream_geoip2_add_variable_geodata(ngx_conf_t *cf,
@@ -410,7 +408,7 @@ ngx_stream_geoip2_parse_config(ngx_conf_t *cf, ngx_command_t *dummy, void *conf)
         if (interval == (time_t) NGX_ERROR) {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                                "invalid interval for auto_reload \"%V\"",
-                               value[1]);
+                               &value[1]);
             return NGX_CONF_ERROR;
         }
 
@@ -665,6 +663,7 @@ ngx_stream_geoip2_log_handler(ngx_stream_session_t *s)
         database->last_change = ngx_file_mtime(&fi);
         MMDB_close(&database->mmdb);
         database->mmdb = tmpdb;
+        ngx_memzero(&database->address, sizeof(database->address));
 
         ngx_log_error(NGX_LOG_INFO, s->connection->log, 0,
                       "Reload MMDB \"%s\"",
