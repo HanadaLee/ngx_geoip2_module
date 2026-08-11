@@ -27,9 +27,11 @@ typedef struct {
     ngx_queue_t              queue;
 } ngx_stream_geoip2_db_t;
 
+
 typedef struct {
     ngx_queue_t              databases;
 } ngx_stream_geoip2_conf_t;
+
 
 typedef struct {
     ngx_stream_geoip2_db_t   *database;
@@ -37,6 +39,7 @@ typedef struct {
     ngx_str_t                default_value;
     ngx_stream_complex_value_t source;
 } ngx_stream_geoip2_ctx_t;
+
 
 typedef struct {
     ngx_stream_geoip2_db_t   *database;
@@ -51,10 +54,10 @@ static ngx_int_t ngx_stream_geoip2_metadata(ngx_stream_session_t *s,
 static void *ngx_stream_geoip2_create_conf(ngx_conf_t *cf);
 static char *ngx_stream_geoip2(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
-static char *ngx_stream_geoip2_parse_config(ngx_conf_t *cf, ngx_command_t *dummy,
-    void *conf);
-static char *ngx_stream_geoip2_add_variable(ngx_conf_t *cf, ngx_command_t *dummy,
-    void *conf);
+static char *ngx_stream_geoip2_parse_config(ngx_conf_t *cf,
+    ngx_command_t *dummy, void *conf);
+static char *ngx_stream_geoip2_add_variable(ngx_conf_t *cf,
+    ngx_command_t *dummy, void *conf);
 static char *ngx_stream_geoip2_add_variable_geodata(ngx_conf_t *cf,
     ngx_stream_geoip2_db_t *database);
 static char *ngx_stream_geoip2_add_variable_metadata(ngx_conf_t *cf,
@@ -63,14 +66,15 @@ static void ngx_stream_geoip2_cleanup(void *data);
 static ngx_int_t ngx_stream_geoip2_init(ngx_conf_t *cf);
 
 
-#define FORMAT(fmt, ...) do {                               \
-        p = ngx_palloc(s->connection->pool, NGX_OFF_T_LEN); \
-        if (p == NULL) {                                    \
-            return NGX_ERROR;                               \
-        }                                                   \
-        v->len = ngx_sprintf(p, fmt, __VA_ARGS__) - p;      \
-        v->data = p;                                        \
+#define FORMAT(fmt, ...) do {                                                \
+        p = ngx_palloc(s->connection->pool, NGX_OFF_T_LEN);                  \
+        if (p == NULL) {                                                     \
+            return NGX_ERROR;                                                \
+        }                                                                    \
+        v->len = ngx_sprintf(p, fmt, __VA_ARGS__) - p;                       \
+        v->data = p;                                                         \
 } while (0)
+
 
 static ngx_command_t  ngx_stream_geoip2_commands[] = {
 
@@ -114,16 +118,21 @@ ngx_module_t  ngx_stream_geoip2_module = {
 
 
 static ngx_int_t
-ngx_stream_geoip2_variable(ngx_stream_session_t *s, ngx_stream_variable_value_t *v,
-    uintptr_t data)
+ngx_stream_geoip2_variable(ngx_stream_session_t *s,
+    ngx_stream_variable_value_t *v, uintptr_t data)
 {
-    int                       mmdb_error;
-    u_char                   *p;
-    ngx_str_t                 val;
-    ngx_addr_t                addr;
-    MMDB_entry_data_s         entry_data;
-    ngx_stream_geoip2_ctx_t  *geoip2 = (ngx_stream_geoip2_ctx_t *) data;
-    ngx_stream_geoip2_db_t   *database = geoip2->database;
+    int                      mmdb_error;
+    u_char                  *p;
+    ngx_str_t                val;
+    ngx_addr_t               addr;
+    MMDB_entry_data_s        entry_data;
+    ngx_stream_geoip2_ctx_t *geoip2;
+    ngx_stream_geoip2_db_t  *database;
+#if MMDB_UINT128_IS_BYTE_ARRAY
+    uint8_t                 *uint128;
+#else
+    mmdb_uint128_t           uint128;
+#endif
 
 #if (NGX_HAVE_INET6)
     uint8_t address[16], *addressp = address;
@@ -131,14 +140,20 @@ ngx_stream_geoip2_variable(ngx_stream_session_t *s, ngx_stream_variable_value_t 
     unsigned long address;
 #endif
 
-    if (geoip2->source.value.len > 0) {
-         if (ngx_stream_complex_value(s, &geoip2->source, &val) != NGX_OK) {
-             goto not_found;
-         }
+    geoip2 = (ngx_stream_geoip2_ctx_t *) data;
+    database = geoip2->database;
 
-        if (ngx_parse_addr(s->connection->pool, &addr, val.data, val.len) != NGX_OK) {
+    if (geoip2->source.value.len > 0) {
+        if (ngx_stream_complex_value(s, &geoip2->source, &val) != NGX_OK) {
             goto not_found;
         }
+
+        if (ngx_parse_addr(s->connection->pool, &addr, val.data, val.len)
+            != NGX_OK)
+        {
+            goto not_found;
+        }
+
     } else {
         addr.sockaddr = s->connection->sockaddr;
         addr.socklen = s->connection->socklen;
@@ -199,6 +214,7 @@ ngx_stream_geoip2_variable(ngx_stream_session_t *s, ngx_stream_variable_value_t 
             if (v->data == NULL) {
                 return NGX_ERROR;
             }
+
             ngx_memcpy(v->data, (u_char *) entry_data.utf8_string, v->len);
             break;
         case MMDB_DATA_TYPE_BYTES:
@@ -207,6 +223,7 @@ ngx_stream_geoip2_variable(ngx_stream_session_t *s, ngx_stream_variable_value_t 
             if (v->data == NULL) {
                 return NGX_ERROR;
             }
+
             ngx_memcpy(v->data, (u_char *) entry_data.bytes, v->len);
             break;
         case MMDB_DATA_TYPE_FLOAT:
@@ -229,17 +246,17 @@ ngx_stream_geoip2_variable(ngx_stream_session_t *s, ngx_stream_variable_value_t 
             break;
         case MMDB_DATA_TYPE_UINT128: ;
 #if MMDB_UINT128_IS_BYTE_ARRAY
-            uint8_t *val = (uint8_t *) entry_data.uint128;
+            uint128 = (uint8_t *) entry_data.uint128;
             FORMAT("0x%02x%02x%02x%02x%02x%02x%02x%02x"
                    "%02x%02x%02x%02x%02x%02x%02x%02x",
-                   val[0], val[1], val[2], val[3],
-                   val[4], val[5], val[6], val[7],
-                   val[8], val[9], val[10], val[11],
-                   val[12], val[13], val[14], val[15]);
+                   uint128[0], uint128[1], uint128[2], uint128[3],
+                   uint128[4], uint128[5], uint128[6], uint128[7],
+                   uint128[8], uint128[9], uint128[10], uint128[11],
+                   uint128[12], uint128[13], uint128[14], uint128[15]);
 #else
-            mmdb_uint128_t val = entry_data.uint128;
+            uint128 = entry_data.uint128;
             FORMAT("0x%016uxL%016uxL",
-                   (uint64_t) (val >> 64), (uint64_t) val);
+                   (uint64_t) (uint128 >> 64), (uint64_t) uint128);
 #endif
             break;
         default:
@@ -253,6 +270,7 @@ ngx_stream_geoip2_variable(ngx_stream_session_t *s, ngx_stream_variable_value_t 
     return NGX_OK;
 
 not_found:
+
     if (geoip2->default_value.len > 0) {
         v->data = geoip2->default_value.data;
         v->len = geoip2->default_value.len;
@@ -271,19 +289,25 @@ not_found:
 
 
 static ngx_int_t
-ngx_stream_geoip2_metadata(ngx_stream_session_t *s, ngx_stream_variable_value_t *v,
-    uintptr_t data)
+ngx_stream_geoip2_metadata(ngx_stream_session_t *s,
+    ngx_stream_variable_value_t *v, uintptr_t data)
 {
-    ngx_stream_geoip2_metadata_t  *metadata = (ngx_stream_geoip2_metadata_t *) data;
-    ngx_stream_geoip2_db_t        *database = metadata->database;
-    u_char                        *p;
+    ngx_stream_geoip2_metadata_t *metadata;
+    ngx_stream_geoip2_db_t       *database;
+    u_char                       *p;
+
+    metadata = (ngx_stream_geoip2_metadata_t *) data;
+    database = metadata->database;
 
     if (ngx_strncmp(metadata->metavalue.data, "build_epoch", 11) == 0) {
         FORMAT("%uL", database->mmdb.metadata.build_epoch);
+
     } else if (ngx_strncmp(metadata->metavalue.data, "last_check", 10) == 0) {
         FORMAT("%T", database->last_check);
+
     } else if (ngx_strncmp(metadata->metavalue.data, "last_change", 11) == 0) {
         FORMAT("%T", database->last_change);
+
     } else {
         v->not_found = 1;
         return NGX_OK;
@@ -326,12 +350,12 @@ static char *
 ngx_stream_geoip2(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     int                       status;
-    char                      *rv;
-    ngx_str_t                 *value;
+    char                     *rv;
+    ngx_str_t                *value;
     ngx_conf_t                save;
-    ngx_stream_geoip2_db_t    *database;
-    ngx_stream_geoip2_conf_t  *gcf = conf;
-    ngx_queue_t               *q;
+    ngx_stream_geoip2_db_t   *database;
+    ngx_stream_geoip2_conf_t *gcf = conf;
+    ngx_queue_t              *q;
 
     value = cf->args->elts;
 
@@ -385,9 +409,9 @@ ngx_stream_geoip2(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 static char *
 ngx_stream_geoip2_parse_config(ngx_conf_t *cf, ngx_command_t *dummy, void *conf)
 {
-    ngx_stream_geoip2_db_t  *database;
-    ngx_str_t             *value;
-    time_t                interval;
+    ngx_stream_geoip2_db_t *database;
+    ngx_str_t              *value;
+    time_t                  interval;
 
     value = cf->args->elts;
 
@@ -396,7 +420,8 @@ ngx_stream_geoip2_parse_config(ngx_conf_t *cf, ngx_command_t *dummy, void *conf)
     }
 
     if (value[0].len == 11
-            && ngx_strncmp(value[0].data, "auto_reload", 11) == 0) {
+        && ngx_strncmp(value[0].data, "auto_reload", 11) == 0)
+    {
         if ((int) cf->args->nelts != 2) {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                                "invalid number of arguments for auto_reload");
@@ -427,8 +452,8 @@ ngx_stream_geoip2_parse_config(ngx_conf_t *cf, ngx_command_t *dummy, void *conf)
 static char *
 ngx_stream_geoip2_add_variable(ngx_conf_t *cf, ngx_command_t *dummy, void *conf)
 {
-    ngx_stream_geoip2_db_t  *database;
-    ngx_str_t               *value;
+    ngx_stream_geoip2_db_t *database;
+    ngx_str_t              *value;
     int                     nelts;
 
     value = cf->args->elts;
@@ -445,7 +470,9 @@ ngx_stream_geoip2_add_variable(ngx_conf_t *cf, ngx_command_t *dummy, void *conf)
     nelts = (int) cf->args->nelts;
     database = (ngx_stream_geoip2_db_t *) conf;
 
-    if (nelts > 0 && value[1].len == 8 && ngx_strncmp(value[1].data, "metadata", 8) == 0) {
+    if (nelts > 0 && value[1].len == 8
+        && ngx_strncmp(value[1].data, "metadata", 8) == 0)
+    {
         return ngx_stream_geoip2_add_variable_metadata(cf, database);
     }
 
@@ -454,7 +481,8 @@ ngx_stream_geoip2_add_variable(ngx_conf_t *cf, ngx_command_t *dummy, void *conf)
 
 
 static char *
-ngx_stream_geoip2_add_variable_metadata(ngx_conf_t *cf, ngx_stream_geoip2_db_t *database)
+ngx_stream_geoip2_add_variable_metadata(
+    ngx_conf_t *cf, ngx_stream_geoip2_db_t *database)
 {
     ngx_stream_geoip2_metadata_t  *metadata;
     ngx_str_t                     *value, name;
@@ -484,12 +512,13 @@ ngx_stream_geoip2_add_variable_metadata(ngx_conf_t *cf, ngx_stream_geoip2_db_t *
 
 
 static char *
-ngx_stream_geoip2_add_variable_geodata(ngx_conf_t *cf, ngx_stream_geoip2_db_t *database)
+ngx_stream_geoip2_add_variable_geodata(
+    ngx_conf_t *cf, ngx_stream_geoip2_db_t *database)
 {
-    ngx_stream_geoip2_ctx_t             *geoip2;
+    ngx_stream_geoip2_ctx_t            *geoip2;
     ngx_stream_compile_complex_value_t  ccv;
-    ngx_str_t                           *value, name, source;
-    ngx_stream_variable_t               *var;
+    ngx_str_t                          *value, name, source;
+    ngx_stream_variable_t              *var;
     int                                 i, nelts, idx;
 
     geoip2 = ngx_pcalloc(cf->pool, sizeof(ngx_stream_geoip2_ctx_t));
@@ -512,20 +541,26 @@ ngx_stream_geoip2_add_variable_geodata(ngx_conf_t *cf, ngx_stream_geoip2_db_t *d
                 break;
             }
 
-            if (value[idx].len > 8 && ngx_strncmp(value[idx].data, "default=", 8) == 0) {
+            if (value[idx].len > 8
+                && ngx_strncmp(value[idx].data, "default=", 8) == 0)
+            {
                 if (geoip2->default_value.len > 0) {
                     ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                                       "default has already been declared for  \"$%V\"", &name);
+                                       "default has already been declared "
+                                       "for \"$%V\"", &name);
                     return NGX_CONF_ERROR;
                 }
 
                 geoip2->default_value.len  = value[idx].len - 8;
                 geoip2->default_value.data = value[idx].data + 8;
 
-            } else if (value[idx].len > 7 && ngx_strncmp(value[idx].data, "source=", 7) == 0) {
+            } else if (value[idx].len > 7
+                       && ngx_strncmp(value[idx].data, "source=", 7) == 0)
+            {
                 if (source.len > 0) {
                     ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                                       "source has already been declared for  \"$%V\"", &name);
+                                       "source has already been declared "
+                                       "for \"$%V\"", &name);
                     return NGX_CONF_ERROR;
                 }
 
@@ -534,7 +569,8 @@ ngx_stream_geoip2_add_variable_geodata(ngx_conf_t *cf, ngx_stream_geoip2_db_t *d
 
                 if (source.data[0] != '$') {
                     ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                                       "invalid source variable name \"%V\"", &source);
+                                       "invalid source variable name \"%V\"",
+                                       &source);
                     return NGX_CONF_ERROR;
                 }
 
@@ -545,14 +581,16 @@ ngx_stream_geoip2_add_variable_geodata(ngx_conf_t *cf, ngx_stream_geoip2_db_t *d
 
                 if (ngx_stream_compile_complex_value(&ccv) != NGX_OK) {
                     ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                                       "unable to compile \"%V\" for \"$%V\"", &source, &name);
+                                       "unable to compile \"%V\" for \"$%V\"",
+                                       &source, &name);
                     return NGX_CONF_ERROR;
                 }
 
             } else {
-                    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                                       "invalid setting \"%V\" for \"$%V\"", &value[idx], &name);
-                    return NGX_CONF_ERROR;
+                ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                                   "invalid setting \"%V\" for \"$%V\"",
+                                   &value[idx], &name);
+                return NGX_CONF_ERROR;
             }
 
             idx++;
@@ -574,6 +612,7 @@ ngx_stream_geoip2_add_variable_geodata(ngx_conf_t *cf, ngx_stream_geoip2_db_t *d
     for (i = idx; i < nelts; i++) {
         geoip2->lookup[i - idx] = (char *) value[i].data;
     }
+
     geoip2->lookup[i - idx] = NULL;
 
     var->get_handler = ngx_stream_geoip2_variable;
@@ -602,12 +641,12 @@ ngx_stream_geoip2_cleanup(void *data)
 static ngx_int_t
 ngx_stream_geoip2_log_handler(ngx_stream_session_t *s)
 {
-    int                        status;
-    MMDB_s                     tmpdb;
-    ngx_queue_t                *q;
-    ngx_file_info_t            fi;
-    ngx_stream_geoip2_db_t    *database;
-    ngx_stream_geoip2_conf_t  *gcf;
+    int                       status;
+    MMDB_s                    tmpdb;
+    ngx_queue_t              *q;
+    ngx_file_info_t           fi;
+    ngx_stream_geoip2_db_t   *database;
+    ngx_stream_geoip2_conf_t *gcf;
 
     ngx_log_debug0(NGX_LOG_DEBUG_STREAM, s->connection->log, 0,
                    "geoip2 stream log handler");
