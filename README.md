@@ -108,6 +108,9 @@ If default is not specified, the variable will be empty if not found.
 
 If source is not specified, $remote_addr will be used to perform the lookup.
 
+A GeoIP2 variable name may only be declared once per `http` or `stream` context,
+including across different database blocks.
+
 To find the path of the data you want (eg: country names en), use the [mmdblookup tool](https://maxmind.github.io/libmaxminddb/mmdblookup.html):
 
 ```

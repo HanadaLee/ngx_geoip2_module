@@ -27,6 +27,11 @@ my @invalid = (
     ['$v source=$remote_addr source=$remote_addr code;', qr/source has already been declared/, 'duplicate source'],
     ['$v source=127.0.0.1 code;', qr/invalid source variable name/, 'literal source'],
     ['$v invalid=x code;', qr/invalid setting/, 'unknown option'],
+    ['$v code; $v country names en;', qr/duplicate geoip2 variable/, 'duplicate data variable'],
+    ['$v metadata build_epoch; $v metadata last_check;', qr/duplicate geoip2 variable/, 'duplicate metadata variable'],
+    ['$v code; $v metadata build_epoch;', qr/duplicate geoip2 variable/, 'data then metadata variable'],
+    ['$v metadata build_epoch; $v code;', qr/duplicate geoip2 variable/, 'metadata then data variable'],
+    ['$v code; $V code;', qr/duplicate geoip2 variable/, 'case-insensitive duplicate variable'],
     ['auto_reload;', qr/invalid number of arguments/, 'missing reload interval'],
     ['auto_reload 1s extra;', qr/invalid number of arguments/, 'extra reload argument'],
     ['auto_reload invalid;', qr/invalid interval/, 'invalid reload interval'],
@@ -37,9 +42,10 @@ my @invalid = (
 
 for my $mode (qw/http stream/) {
     subtest $mode => sub {
-        my $t = Test::Nginx->new()->has($mode)->plan(2 * @invalid + 8);
+        my $t = Test::Nginx->new()->has($mode)->plan(2 * @invalid + 16);
         my $d = $t->testdir();
         $t->write_file('test.mmdb', mmdb(4, [['127.0.0.1', sample_record('LOCAL')]]));
+        $t->write_file('other.mmdb', mmdb(4, [['127.0.0.1', sample_record('OTHER')]]));
         $t->write_file('corrupt.mmdb', 'not a database');
         $t->write_file('error.log', '');
 
@@ -48,6 +54,16 @@ for my $mode (qw/http stream/) {
             my ($status, $log) = check_config($t);
             is($status, 1, "$case->[2] rejected without a signal");
             like($log, $case->[1], "$case->[2] diagnostic");
+        }
+
+        for my $first ('code', 'metadata build_epoch') {
+            for my $second ('code', 'metadata last_check') {
+                config($t, $mode, "geoip2 $d/test.mmdb { \$v $first; } "
+                    . "geoip2 $d/other.mmdb { \$v $second; }");
+                my ($status, $log) = check_config($t);
+                is($status, 1, "duplicate across databases: $first / $second");
+                like($log, qr/duplicate geoip2 variable/, 'duplicate diagnostic');
+            }
         }
 
         config($t, $mode, "geoip2 $d/test.mmdb { " . <<'EOF');
@@ -75,6 +91,27 @@ EOF
         }
     };
 }
+
+subtest 'independent namespaces' => sub {
+    my $t = Test::Nginx->new()->has(qw/http stream/)->plan(1);
+    my $d = $t->testdir();
+    $t->write_file('test.mmdb', mmdb(4, [['127.0.0.1', sample_record('LOCAL')]]));
+    $t->write_file('error.log', '');
+    $t->write_file_expand('nginx.conf', <<EOF);
+%%TEST_GLOBALS%%
+events {}
+http {
+    %%TEST_GLOBALS_HTTP%%
+    geoip2 $d/test.mmdb { \$v code; }
+}
+stream {
+    %%TEST_GLOBALS_STREAM%%
+    geoip2 $d/test.mmdb { \$v metadata build_epoch; }
+}
+EOF
+    my ($status, $log) = check_config($t);
+    is($status, 0, 'HTTP and Stream may use the same variable name');
+};
 done_testing();
 
 sub config {

@@ -68,6 +68,8 @@ static char *ngx_stream_geoip2_add_variable_geodata(ngx_conf_t *cf,
     ngx_stream_geoip2_db_t *database);
 static char *ngx_stream_geoip2_add_variable_metadata(ngx_conf_t *cf,
     ngx_stream_geoip2_db_t *database);
+static ngx_stream_variable_t *ngx_stream_geoip2_new_variable(ngx_conf_t *cf,
+    ngx_str_t *name);
 static void ngx_stream_geoip2_cleanup(void *data);
 static ngx_int_t ngx_stream_geoip2_init(ngx_conf_t *cf);
 
@@ -525,6 +527,28 @@ ngx_stream_geoip2_add_variable(ngx_conf_t *cf, ngx_command_t *dummy, void *conf)
 }
 
 
+static ngx_stream_variable_t *
+ngx_stream_geoip2_new_variable(ngx_conf_t *cf, ngx_str_t *name)
+{
+    ngx_stream_variable_t  *var;
+
+    var = ngx_stream_add_variable(cf, name, NGX_STREAM_VAR_CHANGEABLE);
+    if (var == NULL) {
+        return NULL;
+    }
+
+    if (var->get_handler == ngx_stream_geoip2_variable
+        || var->get_handler == ngx_stream_geoip2_metadata)
+    {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "the duplicate geoip2 variable \"$%V\"", name);
+        return NULL;
+    }
+
+    return var;
+}
+
+
 static char *
 ngx_stream_geoip2_add_variable_metadata(
     ngx_conf_t *cf, ngx_stream_geoip2_db_t *database)
@@ -563,7 +587,7 @@ ngx_stream_geoip2_add_variable_metadata(
     metadata->database = database;
     metadata->metavalue = value[2];
 
-    var = ngx_stream_add_variable(cf, &name, NGX_STREAM_VAR_CHANGEABLE);
+    var = ngx_stream_geoip2_new_variable(cf, &name);
     if (var == NULL) {
         return NGX_CONF_ERROR;
     }
@@ -667,7 +691,7 @@ ngx_stream_geoip2_add_variable_geodata(
         return NGX_CONF_ERROR;
     }
 
-    var = ngx_stream_add_variable(cf, &name, NGX_STREAM_VAR_CHANGEABLE);
+    var = ngx_stream_geoip2_new_variable(cf, &name);
     if (var == NULL) {
         return NGX_CONF_ERROR;
     }
