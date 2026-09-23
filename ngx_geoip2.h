@@ -15,6 +15,31 @@
 
 
 static ngx_int_t
+ngx_geoip2_escape_uri(ngx_pool_t *pool, ngx_str_t *value)
+{
+    u_char     *p;
+    uintptr_t   n;
+
+    n = ngx_escape_uri(NULL, value->data, value->len, NGX_ESCAPE_URI_COMPONENT);
+    if (n == 0) {
+        return NGX_OK;
+    }
+
+    p = ngx_pnalloc(pool, value->len + 2 * n);
+    if (p == NULL) {
+        return NGX_ERROR;
+    }
+
+    (void) ngx_escape_uri(p, value->data, value->len, NGX_ESCAPE_URI_COMPONENT);
+
+    value->data = p;
+    value->len += 2 * n;
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t
 ngx_geoip2_file_changed(ngx_file_info_t *a, ngx_file_info_t *b)
 {
     if (ngx_file_uniq(a) != ngx_file_uniq(b)

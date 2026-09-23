@@ -27,6 +27,12 @@ my @invalid = (
     ['$v source=$remote_addr source=$remote_addr code;', qr/source has already been declared/, 'duplicate source'],
     ['$v source=127.0.0.1 code;', qr/invalid source variable name/, 'literal source'],
     ['$v invalid=x code;', qr/invalid setting/, 'unknown option'],
+    ['$v escape=uri;', qr/missing GeoIP2 lookup path/, 'escape without path'],
+    ['$v escape=uri escape=uri code;', qr/escape has already been declared/, 'duplicate escape'],
+    ['$v escape= code;', qr/invalid setting/, 'empty escape'],
+    ['$v escape=none code;', qr/invalid setting/, 'unknown escape'],
+    ['$v escape=URI code;', qr/invalid setting/, 'uppercase escape'],
+    ['$v escape=uri_suffix code;', qr/invalid setting/, 'escape prefix'],
     ['$v code; $v country names en;', qr/duplicate geoip2 variable/, 'duplicate data variable'],
     ['$v metadata build_epoch; $v metadata last_check;', qr/duplicate geoip2 variable/, 'duplicate metadata variable'],
     ['$v code; $v metadata build_epoch;', qr/duplicate geoip2 variable/, 'data then metadata variable'],
@@ -69,6 +75,7 @@ for my $mode (qw/http stream/) {
         config($t, $mode, "geoip2 $d/test.mmdb { " . <<'EOF');
             $code default=fallback source=$remote_addr code;
             $reordered source=$remote_addr default=fallback country names en;
+            $escaped escape=uri source=$remote_addr default=fallback country names en;
             $epoch metadata build_epoch;
             $check metadata last_check;
             $change metadata last_change;

@@ -40,10 +40,11 @@ typedef struct {
 
 
 typedef struct {
-    ngx_stream_geoip2_db_t   *database;
-    const char               **lookup;
-    ngx_str_t                default_value;
-    ngx_stream_complex_value_t source;
+    ngx_stream_geoip2_db_t     *database;
+    const char                **lookup;
+    ngx_str_t                   default_value;
+    ngx_stream_complex_value_t  source;
+    ngx_uint_t                  escape;
 } ngx_stream_geoip2_ctx_t;
 
 
@@ -304,6 +305,18 @@ ngx_stream_geoip2_variable(ngx_stream_session_t *s,
             break;
         default:
             goto not_found;
+    }
+
+    if (geoip2->escape) {
+        val.len = v->len;
+        val.data = v->data;
+
+        if (ngx_geoip2_escape_uri(s->connection->pool, &val) != NGX_OK) {
+            return NGX_ERROR;
+        }
+
+        v->len = val.len;
+        v->data = val.data;
     }
 
     v->valid = 1;
@@ -673,6 +686,18 @@ ngx_stream_geoip2_add_variable_geodata(
                                        &source, &name);
                     return NGX_CONF_ERROR;
                 }
+
+            } else if (value[idx].len == 10
+                       && ngx_strncmp(value[idx].data, "escape=uri", 10) == 0)
+            {
+                if (geoip2->escape) {
+                    ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                                       "escape has already been declared "
+                                       "for \"$%V\"", &name);
+                    return NGX_CONF_ERROR;
+                }
+
+                geoip2->escape = 1;
 
             } else {
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,

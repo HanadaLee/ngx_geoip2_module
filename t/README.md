@@ -31,7 +31,9 @@ Coverage:
   explicit source precedence.
 - `stream_geoip2_realip.t`: default source after PROXY protocol realip handling.
 - `geoip2_config.t`: missing/extra arguments, metadata names, invalid options,
-  missing/corrupt/duplicate databases.
+  missing/corrupt/duplicate databases and duplicate variable names.
+- `geoip2_escape.t`: URI escaping of Unicode and binary values in both modules,
+  unescaped defaults, option ordering and independent raw/escaped variables.
 - `geoip2_reload.t`: older or preserved timestamps, atomic replacement,
   zero/negative cache invalidation, failed reload recovery, missing files,
   unchanged files and disabled auto reload.

@@ -102,7 +102,7 @@ auto_reload <interval>
 
 ##### GeoIP:
 ```
-$variable_name [default=<value] [source=$variable_with_ip] path ...
+$variable_name [default=<value>] [source=$variable_with_ip] [escape=uri] path ...
 ```
 If default is not specified, the variable will be empty if not found.
 
@@ -110,6 +110,22 @@ If source is not specified, $remote_addr will be used to perform the lookup.
 
 A GeoIP2 variable name may only be declared once per `http` or `stream` context,
 including across different database blocks.
+
+The optional `escape=uri` percent-encodes values from the database as a URI
+component: every byte except letters, digits and `-._~` becomes `%XX`.
+The `default` value stays as written. Without this option, values are returned
+unchanged.
+
+Use this when passing non-ASCII place names to an upstream that expects ASCII
+request headers. The receiver must understand percent-encoded values:
+
+```nginx
+geoip2 /etc/maxmind-city.mmdb {
+    $geoip2_city escape=uri city names en;
+}
+
+proxy_set_header X-City $geoip2_city;  # Ōbu becomes %C5%8Cbu
+```
 
 To find the path of the data you want (eg: country names en), use the [mmdblookup tool](https://maxmind.github.io/libmaxminddb/mmdblookup.html):
 
