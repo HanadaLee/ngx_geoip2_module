@@ -85,7 +85,8 @@ EOF
         is($r->{code}, 'D', 'valid replacement recovers after failure');
         rename "$d/active.mmdb", "$d/saved.mmdb" or die "rename: $!";
         wait_for($query, sub { $t->read_file('error.log') =~ /stat.*active\.mmdb.*failed/ });
-        like($t->read_file('error.log'), qr/stat.*active\.mmdb.*failed/, 'missing file logged');
+        like($t->read_file('error.log'), qr/\[error\].*stat.*active\.mmdb.*failed/,
+            'missing file logged at error level');
         is($query->()->{code}, 'D', 'missing file retains mapped database');
 
         is($query->('192.0.2.1')->{code}, 'missing', 'cache a negative lookup');

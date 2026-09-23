@@ -793,7 +793,7 @@ ngx_stream_geoip2_log_handler(ngx_stream_session_t *s)
         database->last_check = ngx_time();
 
         if (ngx_file_info(database->mmdb.filename, &fi) == NGX_FILE_ERROR) {
-            ngx_log_error(NGX_LOG_EMERG, s->connection->log, ngx_errno,
+            ngx_log_error(NGX_LOG_ERR, s->connection->log, ngx_errno,
                           ngx_file_info_n " \"%s\" failed",
                           database->mmdb.filename);
 
