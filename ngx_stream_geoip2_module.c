@@ -18,6 +18,8 @@
 typedef struct {
     MMDB_s                   mmdb;
     MMDB_lookup_result_s     result;
+    sa_family_t              family;
+    ngx_uint_t               cache_valid;
     time_t                   last_check;
     time_t                   last_change;
     time_t                   check_interval;
@@ -137,7 +139,9 @@ ngx_stream_geoip2_variable(ngx_stream_session_t *s,
 #endif
 
 #if (NGX_HAVE_INET6)
-    uint8_t address[16], *addressp = address;
+    uint8_t              address[16], *addressp = address;
+    struct in6_addr     *inaddr6;
+    struct sockaddr_in   sin;
 #else
     unsigned long address;
 #endif
@@ -161,6 +165,23 @@ ngx_stream_geoip2_variable(ngx_stream_session_t *s,
         addr.socklen = s->connection->socklen;
     }
 
+#if (NGX_HAVE_INET6)
+    if (addr.sockaddr->sa_family == AF_INET6) {
+        inaddr6 = &((struct sockaddr_in6 *) addr.sockaddr)->sin6_addr;
+
+        if (IN6_IS_ADDR_V4MAPPED(inaddr6)) {
+            ngx_memzero(&sin, sizeof(struct sockaddr_in));
+            sin.sin_family = AF_INET;
+            ngx_memcpy(&sin.sin_addr, &inaddr6->s6_addr[12], 4);
+            addr.sockaddr = (struct sockaddr *) &sin;
+            addr.socklen = sizeof(struct sockaddr_in);
+
+        } else if (database->mmdb.metadata.ip_version == 4) {
+            goto not_found;
+        }
+    }
+#endif
+
     switch (addr.sockaddr->sa_family) {
         case AF_INET:
 #if (NGX_HAVE_INET6)
@@ -181,18 +202,26 @@ ngx_stream_geoip2_variable(ngx_stream_session_t *s,
             goto not_found;
     }
 
+    if (!database->cache_valid
+        || database->family != addr.sockaddr->sa_family
 #if (NGX_HAVE_INET6)
-    if (ngx_memcmp(&address, &database->address, sizeof(address)) != 0) {
+        || ngx_memcmp(&address, &database->address, sizeof(address)) != 0
 #else
-    if (address != database->address) {
+        || address != database->address
 #endif
-        memcpy(&database->address, &address, sizeof(address));
+       )
+    {
+        database->cache_valid = 0;
         database->result = MMDB_lookup_sockaddr(&database->mmdb,
                                                 addr.sockaddr, &mmdb_error);
 
         if (mmdb_error != MMDB_SUCCESS) {
             goto not_found;
         }
+
+        ngx_memcpy(&database->address, &address, sizeof(address));
+        database->family = addr.sockaddr->sa_family;
+        database->cache_valid = 1;
     }
 
     if (!database->result.found_entry
@@ -743,7 +772,8 @@ ngx_stream_geoip2_log_handler(ngx_stream_session_t *s)
         database->last_change = ngx_file_mtime(&fi);
         MMDB_close(&database->mmdb);
         database->mmdb = tmpdb;
-        ngx_memzero(&database->address, sizeof(database->address));
+        database->cache_valid = 0;
+        ngx_memzero(&database->result, sizeof(database->result));
 
         ngx_log_error(NGX_LOG_INFO, s->connection->log, 0,
                       "Reload MMDB \"%s\"",
