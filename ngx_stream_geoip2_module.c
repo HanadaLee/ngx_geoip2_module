@@ -458,7 +458,7 @@ ngx_stream_geoip2_add_variable(ngx_conf_t *cf, ngx_command_t *dummy, void *conf)
 
     value = cf->args->elts;
 
-    if (value[0].data[0] != '$') {
+    if (value[0].len < 2 || value[0].data[0] != '$') {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                            "invalid variable name \"%V\"", &value[0]);
         return NGX_CONF_ERROR;
@@ -470,7 +470,13 @@ ngx_stream_geoip2_add_variable(ngx_conf_t *cf, ngx_command_t *dummy, void *conf)
     nelts = (int) cf->args->nelts;
     database = (ngx_stream_geoip2_db_t *) conf;
 
-    if (nelts > 0 && value[1].len == 8
+    if (nelts < 2) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "missing GeoIP2 lookup path for \"$%V\"", &value[0]);
+        return NGX_CONF_ERROR;
+    }
+
+    if (value[1].len == 8
         && ngx_strncmp(value[1].data, "metadata", 8) == 0)
     {
         return ngx_stream_geoip2_add_variable_metadata(cf, database);
@@ -488,12 +494,31 @@ ngx_stream_geoip2_add_variable_metadata(
     ngx_str_t                     *value, name;
     ngx_stream_variable_t         *var;
 
+    value = cf->args->elts;
+
+    if (cf->args->nelts != 3) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "invalid number of arguments for GeoIP2 metadata");
+        return NGX_CONF_ERROR;
+    }
+
+    if (!((value[2].len == 11
+           && ngx_strncmp(value[2].data, "build_epoch", 11) == 0)
+          || (value[2].len == 10
+              && ngx_strncmp(value[2].data, "last_check", 10) == 0)
+          || (value[2].len == 11
+              && ngx_strncmp(value[2].data, "last_change", 11) == 0)))
+    {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "invalid GeoIP2 metadata field \"%V\"", &value[2]);
+        return NGX_CONF_ERROR;
+    }
+
     metadata = ngx_pcalloc(cf->pool, sizeof(ngx_stream_geoip2_metadata_t));
     if (metadata == NULL) {
         return NGX_CONF_ERROR;
     }
 
-    value = cf->args->elts;
     name = value[0];
 
     metadata->database = database;
@@ -595,6 +620,12 @@ ngx_stream_geoip2_add_variable_geodata(
 
             idx++;
         }
+    }
+
+    if (idx == nelts) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "missing GeoIP2 lookup path for \"$%V\"", &name);
+        return NGX_CONF_ERROR;
     }
 
     var = ngx_stream_add_variable(cf, &name, NGX_STREAM_VAR_CHANGEABLE);
