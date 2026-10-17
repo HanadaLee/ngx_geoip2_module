@@ -89,8 +89,13 @@ Available fields:
   - last_change: the last time the database was reloaded (when using auto_reload)
 
 ##### Autoreload (default: disabled):
-Enabling auto reload will have nginx check the modification time of the database at the specified
-interval and reload it if it has changed.
+Enabling auto reload checks for database changes at the specified interval,
+when an HTTP request or Stream session finishes. The check detects file
+replacement as well as changes to file timestamps or size. A failed reload
+keeps the previous database in use.
+
+Replace database files atomically (for example, using `rename`) rather than
+overwriting a file that is currently mapped by a worker.
 ```
 auto_reload <interval>
 ```

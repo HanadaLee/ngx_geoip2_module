@@ -18,6 +18,7 @@
 typedef struct {
     MMDB_s                   mmdb;
     MMDB_lookup_result_s     result;
+    ngx_file_info_t          file_info;
     sa_family_t              family;
     ngx_uint_t               cache_valid;
     time_t                   last_check;
@@ -388,7 +389,6 @@ ngx_stream_geoip2_create_conf(ngx_conf_t *cf)
 static char *
 ngx_stream_geoip2(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    int                       status;
     char                     *rv;
     ngx_str_t                *value;
     ngx_conf_t                save;
@@ -426,12 +426,11 @@ ngx_stream_geoip2(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_queue_insert_tail(&gcf->databases, &database->queue);
     database->last_check = database->last_change = ngx_time();
 
-    status = MMDB_open((char *) value[1].data, MMDB_MODE_MMAP, &database->mmdb);
-
-    if (status != MMDB_SUCCESS) {
+    if (ngx_geoip2_open((char *) value[1].data, &database->mmdb,
+                       &database->file_info, cf->log) != NGX_OK)
+    {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                           "MMDB_open(\"%V\") failed - %s", &value[1],
-                           MMDB_strerror(status));
+                           "could not open GeoIP2 database \"%V\"", &value[1]);
         return NGX_CONF_ERROR;
     }
 
@@ -711,7 +710,6 @@ ngx_stream_geoip2_cleanup(void *data)
 static ngx_int_t
 ngx_stream_geoip2_log_handler(ngx_stream_session_t *s)
 {
-    int                       status;
     MMDB_s                    tmpdb;
     ngx_queue_t              *q;
     ngx_file_info_t           fi;
@@ -752,26 +750,23 @@ ngx_stream_geoip2_log_handler(ngx_stream_session_t *s)
             continue;
         }
 
-        if (ngx_file_mtime(&fi) <= database->last_change) {
+        if (!ngx_geoip2_file_changed(&fi, &database->file_info)) {
             continue;
         }
 
         /* do the reload */
 
         ngx_memzero(&tmpdb, sizeof(MMDB_s));
-        status = MMDB_open(database->mmdb.filename, MMDB_MODE_MMAP, &tmpdb);
-
-        if (status != MMDB_SUCCESS) {
-            ngx_log_error(NGX_LOG_ERR, s->connection->log, 0,
-                          "MMDB_open(\"%s\") failed to reload - %s",
-                          database->mmdb.filename, MMDB_strerror(status));
-
+        if (ngx_geoip2_open(database->mmdb.filename, &tmpdb, &fi,
+                           s->connection->log) != NGX_OK)
+        {
             continue;
         }
 
-        database->last_change = ngx_file_mtime(&fi);
+        database->last_change = ngx_time();
         MMDB_close(&database->mmdb);
         database->mmdb = tmpdb;
+        database->file_info = fi;
         database->cache_valid = 0;
         ngx_memzero(&database->result, sizeof(database->result));
 

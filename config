@@ -9,6 +9,26 @@ ngx_feature_test="MMDB_s mmdb"
 ngx_addon_name="ngx_geoip2_module"
 
 if [ $ngx_found = yes ]; then
+	ngx_geoip2_libs=$ngx_feature_libs
+
+	ngx_feature="GeoIP2 stat nanosecond timestamps"
+	ngx_feature_name=NGX_GEOIP2_HAVE_STAT_ST_MTIM
+	ngx_feature_incs="#include <sys/stat.h>"
+	ngx_feature_libs=
+	ngx_feature_test="struct stat sb;
+	                  sb.st_mtim.tv_nsec = 0; sb.st_ctim.tv_nsec = 0;
+	                  return sb.st_mtim.tv_nsec + sb.st_ctim.tv_nsec"
+	. auto/feature
+
+	if [ $ngx_found = no ]; then
+		ngx_feature="GeoIP2 stat timespec timestamps"
+		ngx_feature_name=NGX_GEOIP2_HAVE_STAT_ST_MTIMESPEC
+		ngx_feature_test="struct stat sb;
+		                  sb.st_mtimespec.tv_nsec = 0; sb.st_ctimespec.tv_nsec = 0;
+		                  return sb.st_mtimespec.tv_nsec + sb.st_ctimespec.tv_nsec"
+		. auto/feature
+	fi
+
 	if test -n "$ngx_module_link"; then
 		if [ $HTTP != NO ]; then
 			ngx_module_type=HTTP
@@ -16,7 +36,7 @@ if [ $ngx_found = yes ]; then
 			ngx_module_incs=
 			ngx_module_deps="$ngx_addon_dir/ngx_geoip2.h"
 			ngx_module_srcs="$ngx_addon_dir/ngx_http_geoip2_module.c"
-			ngx_module_libs="$ngx_feature_libs"
+			ngx_module_libs="$ngx_geoip2_libs"
 			. auto/module
 		fi
 
@@ -27,14 +47,14 @@ if [ $ngx_found = yes ]; then
 			ngx_module_incs=
 			ngx_module_deps="$ngx_addon_dir/ngx_geoip2.h"
 			ngx_module_srcs="$ngx_addon_dir/ngx_stream_geoip2_module.c"
-			ngx_module_libs="$ngx_feature_libs"
+			ngx_module_libs="$ngx_geoip2_libs"
 			. auto/module
 		fi
 	else
 		HTTP_MODULES="$HTTP_MODULES ngx_http_geoip2_module"
 		NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/ngx_http_geoip2_module.c"
 		NGX_ADDON_DEPS="$NGX_ADDON_DEPS $ngx_addon_dir/ngx_geoip2.h"
-		CORE_LIBS="$CORE_LIBS $ngx_feature_libs"
+		CORE_LIBS="$CORE_LIBS $ngx_geoip2_libs"
 	fi
 else   
 	cat << END
