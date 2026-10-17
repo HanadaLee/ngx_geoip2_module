@@ -1,4 +1,5 @@
 /*
+ * Copyright (C) Hanada
  * Copyright (C) Lee Valentine <lee@leev.net>
  * Copyright (C) Andrei Belov <defanator@gmail.com>
  *

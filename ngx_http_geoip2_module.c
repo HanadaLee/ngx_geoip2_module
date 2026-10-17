@@ -1,4 +1,5 @@
 /*
+ * Copyright (C) Hanada
  * Copyright (C) Lee Valentine <lee@leev.net>
  *
  * Based on nginx's 'ngx_http_geoip_module.c' by Igor Sysoev
