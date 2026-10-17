@@ -12,6 +12,8 @@
 
 #include <maxminddb.h>
 
+#include "ngx_geoip2.h"
+
 
 typedef struct {
     MMDB_s                   mmdb;
@@ -67,11 +69,11 @@ static ngx_int_t ngx_stream_geoip2_init(ngx_conf_t *cf);
 
 
 #define FORMAT(fmt, ...) do {                                                \
-        p = ngx_palloc(s->connection->pool, NGX_OFF_T_LEN);                  \
+        p = ngx_pnalloc(s->connection->pool, NGX_GEOIP2_VALUE_LEN);            \
         if (p == NULL) {                                                     \
             return NGX_ERROR;                                                \
         }                                                                    \
-        v->len = ngx_sprintf(p, fmt, __VA_ARGS__) - p;                       \
+        v->len = ngx_snprintf(p, NGX_GEOIP2_VALUE_LEN, fmt, __VA_ARGS__) - p;   \
         v->data = p;                                                         \
 } while (0)
 
@@ -227,9 +229,22 @@ ngx_stream_geoip2_variable(ngx_stream_session_t *s,
             ngx_memcpy(v->data, (u_char *) entry_data.bytes, v->len);
             break;
         case MMDB_DATA_TYPE_FLOAT:
+            /* ngx_sprintf converts the absolute integer part to int64_t. */
+            if (!(entry_data.float_value > -NGX_GEOIP2_FLOAT_LIMIT
+                  && entry_data.float_value < NGX_GEOIP2_FLOAT_LIMIT))
+            {
+                goto not_found;
+            }
+
             FORMAT("%.5f", entry_data.float_value);
             break;
         case MMDB_DATA_TYPE_DOUBLE:
+            if (!(entry_data.double_value > -NGX_GEOIP2_FLOAT_LIMIT
+                  && entry_data.double_value < NGX_GEOIP2_FLOAT_LIMIT))
+            {
+                goto not_found;
+            }
+
             FORMAT("%.5f", entry_data.double_value);
             break;
         case MMDB_DATA_TYPE_UINT16:
@@ -247,12 +262,7 @@ ngx_stream_geoip2_variable(ngx_stream_session_t *s,
         case MMDB_DATA_TYPE_UINT128: ;
 #if MMDB_UINT128_IS_BYTE_ARRAY
             uint128 = (uint8_t *) entry_data.uint128;
-            FORMAT("0x%02x%02x%02x%02x%02x%02x%02x%02x"
-                   "%02x%02x%02x%02x%02x%02x%02x%02x",
-                   uint128[0], uint128[1], uint128[2], uint128[3],
-                   uint128[4], uint128[5], uint128[6], uint128[7],
-                   uint128[8], uint128[9], uint128[10], uint128[11],
-                   uint128[12], uint128[13], uint128[14], uint128[15]);
+            FORMAT("0x%*xs", (size_t) 16, uint128);
 #else
             uint128 = entry_data.uint128;
             FORMAT("0x%016uxL%016uxL",
